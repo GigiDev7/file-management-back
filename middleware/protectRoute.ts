@@ -14,7 +14,7 @@ export default async function (
   const token = req.headers.authorization.split(" ")[1];
   try {
     const decodedData = jwt.verify(token, process.env.JWT_SECRET as string);
-    const userId = (decodedData as any).id;
+    const userId = (decodedData as jwt.JwtPayload).id;
     const user = await User.findById(userId);
     if (!user) {
       return res.status(401).json({ message: "Authentication Failed" });
