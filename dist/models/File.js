@@ -7,25 +7,22 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const fileSchema = new mongoose_1.default.Schema({
     name: {
         type: String,
-        required: true,
     },
     path: {
-        type: [String],
-        required: true,
+        type: String,
+    },
+    fsPath: {
+        type: String,
     },
     size: {
         type: Number,
-        required: true,
     },
     mimeType: {
         type: String,
-        required: true,
     },
     createdBy: {
-        type: String,
-    },
-    content: {
-        type: Buffer,
+        type: mongoose_1.default.Schema.Types.ObjectId,
+        ref: "User",
     },
     hash: {
         type: String,
@@ -33,7 +30,6 @@ const fileSchema = new mongoose_1.default.Schema({
 }, {
     timestamps: true,
 });
-// Create index for file hashes
-//fileSchema.index({hash:1})
+fileSchema.index({ hash: 1 });
 const FileModel = mongoose_1.default.model("File", fileSchema);
 exports.default = FileModel;

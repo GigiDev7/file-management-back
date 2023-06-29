@@ -4,25 +4,22 @@ const fileSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true,
     },
     path: {
-      type: [String],
-      required: true,
+      type: String,
+    },
+    fsPath: {
+      type: String,
     },
     size: {
       type: Number,
-      required: true,
     },
     mimeType: {
       type: String,
-      required: true,
     },
     createdBy: {
-      type: String,
-    },
-    content: {
-      type: Buffer,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
     hash: {
       type: String,
@@ -33,8 +30,7 @@ const fileSchema = new mongoose.Schema(
   }
 );
 
-// Create index for file hashes
-//fileSchema.index({hash:1})
+fileSchema.index({ hash: 1 });
 
 const FileModel = mongoose.model("File", fileSchema);
 

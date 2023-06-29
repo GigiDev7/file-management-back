@@ -2,130 +2,189 @@ import FileSystemProvider from "./fileSystemProvider";
 import FileModel from "../models/File";
 import { getUserFilePath } from "../utils/getPath";
 import crypto from "crypto";
+import mongoose from "mongoose";
 
 const fsProvider = new FileSystemProvider();
 
-const uploadFile = async (userId: string, file: Express.Multer.File) => {
+const getFiles = (userId: mongoose.Types.ObjectId, path: string) => {
+  return FileModel.find({
+    createdBy: userId,
+    path,
+  });
+};
+
+const uploadFile = async (
+  userId: mongoose.Types.ObjectId,
+  file: Express.Multer.File,
+  filePath: string
+) => {
   const fileContent = await fsProvider.readFile(file.path);
   const fileHash = crypto.createHash("md5").update(fileContent).digest("hex");
+  const existingFile = await FileModel.findOne({ hash: fileHash });
 
-  // Don't upload file if the file with same content already exists, just add new path in DB
-  /* const existingFile = await FileModel.findOne({ hash: fileHash });
-   if (existingFile) {
+  let fsPath = file.path;
+  if (existingFile) {
+    fsPath = existingFile.fsPath as string;
     await fsProvider.deleteFile(file.path);
-    existingFile.path.push(file.path)
-    await existingFile.save()
-    return;
-  }  */
+  }
 
   const newFile = await FileModel.create({
-    content: fileContent,
     createdBy: userId,
     mimeType: file.mimetype,
     name: file.filename,
-    path: [file.path],
+    path: filePath,
     size: file.size,
     hash: fileHash,
+    fsPath,
   });
+
   return newFile;
 };
 
-const deleteFile = async (filePath: string, userId: string) => {
-  const file = await FileModel.findOne({
-    createdBy: userId,
-    path: { $all: [filePath] },
-  });
+const deleteFile = async (fileId: mongoose.Types.ObjectId) => {
+  const file = await FileModel.findById(fileId);
+  const fileHash = file?.hash;
+  const fsPath = file?.fsPath;
+  await file?.deleteOne();
+  const referenceFile = await FileModel.findOne({ hash: fileHash });
+  if (!referenceFile) {
+    await fsProvider.deleteFile(fsPath as string);
+  }
+  //return FileModel.findByIdAndDelete(fileId);
+};
+
+const moveFile = (fileId: mongoose.Types.ObjectId, newPath: string) => {
+  return FileModel.findByIdAndUpdate(fileId, { path: newPath });
+};
+
+const copyFile = async (fileId: mongoose.Types.ObjectId, newPath: string) => {
+  const file = await FileModel.findById(fileId);
   if (file) {
-    file.path = file.path.filter((fp) => fp !== filePath);
-    if (file.path.length) {
-      await file.save();
-    } else {
-      await file.deleteOne();
-    }
+    await FileModel.create({
+      createdBy: file.createdBy,
+      mimeType: file.mimeType,
+      name: file.name,
+      path: newPath,
+      size: file.size,
+      hash: file.hash,
+      fsPath: file.fsPath,
+    });
   }
 };
 
-const copyFile = async (srcPath: string, desPath: string, userId: string) => {
-  const file = await FileModel.findOne({
-    createdBy: userId,
-    path: { $all: [srcPath] },
-  });
+const downloadFile = async (fileId: mongoose.Types.ObjectId) => {
+  const file = await FileModel.findById(fileId);
   if (file) {
-    file.path.push(desPath);
-    await file.save();
+    return file.fsPath;
   }
 };
 
-const moveFile = async (srcPath: string, destPath: string, userId: string) => {
-  const file = await FileModel.findOne({
+const createFolder = (
+  userId: mongoose.Types.ObjectId,
+  path: string,
+  folderName: string
+) => {
+  return FileModel.create({
     createdBy: userId,
-    path: { $all: [srcPath] },
+    name: folderName,
+    path,
   });
-  if (file) {
-    const ind = file.path.findIndex((fp) => fp === srcPath);
-    file.path[ind] = destPath;
-    await file.save();
-  }
 };
 
-const deleteFolder = async (folderPath: string, userId: string) => {
-  const files = await FileModel.find({
+const deleteFolder = async (
+  folderId: mongoose.Types.ObjectId,
+  userId: mongoose.Types.ObjectId
+) => {
+  const folder = await FileModel.findById(folderId);
+  await FileModel.deleteMany({
     createdBy: userId,
-    path: { $regex: `^${folderPath}.*` },
+    path: {
+      $regex: `^${folder?.path?.length === 1 ? "/" : folder?.path + "/"}${
+        folder?.name
+      }`,
+    },
   });
+  await folder?.deleteOne();
+};
 
-  for (const f of files) {
-    f.path = f.path.filter((p) => !p.startsWith(folderPath));
-    if (!f.path.length) {
-      await f.deleteOne();
-    } else {
+const moveFolder = async (
+  folderId: mongoose.Types.ObjectId,
+  userId: mongoose.Types.ObjectId,
+  newPath: string
+) => {
+  const folder = await FileModel.findById(folderId);
+  if (folder) {
+    const files = await FileModel.find({
+      createdBy: userId,
+      path: {
+        $regex: `^${folder?.path}${
+          folder.path?.length === 1 ? folder.name : "/" + folder.name
+        }`,
+      },
+    });
+    for (const f of files) {
+      if (newPath.length === 1) {
+        f.path = newPath + f.path?.slice(folder.path!.length + 1);
+      } else {
+        f.path = newPath + "/" + f.path?.slice(folder.path!.length);
+      }
+
       await f.save();
     }
+    folder.path = newPath;
+    await folder?.save();
   }
 };
 
 const copyFolder = async (
-  srcPath: string,
-  destPath: string,
-  userId: string
+  folderId: mongoose.Types.ObjectId,
+  userId: mongoose.Types.ObjectId,
+  newPath: string
 ) => {
-  const files = await FileModel.find({
-    createdBy: userId,
-    path: { $regex: `^${srcPath}.*` },
-  });
+  const folder = await FileModel.findById(folderId);
+  if (folder) {
+    const files = await FileModel.find({
+      createdBy: userId,
+      path: {
+        $regex: `^${folder?.path}${
+          folder.path?.length === 1 ? folder.name : "/" + folder.name
+        }`,
+      },
+    });
 
-  for (let f of files) {
-    f.path.push(`${destPath}/${f.name}`);
-    await f.save();
-  }
-};
+    for (const f of files) {
+      const newfileData: any = {
+        createdBy: f.createdBy,
+        name: f.name,
+        path:
+          newPath.length === 1
+            ? newPath + f.path?.slice(folder.path!.length + 1)
+            : (f.path = newPath + "/" + f.path?.slice(folder.path!.length)),
+      };
+      if (f.mimeType) newfileData.mimeType = f.mimeType;
+      if (f.size) newfileData.size = f.size;
+      if (f.hash) newfileData.hash = f.hash;
+      if (f.fsPath) newfileData.fsPath = f.fsPath;
 
-const moveFolder = async (
-  srcPath: string,
-  destPath: string,
-  userId: string
-) => {
-  const files = await FileModel.find({
-    createdBy: userId,
-    path: { $regex: `^${srcPath}.*` },
-  });
-
-  for (let f of files) {
-    for (let i = 0; i < f.path.length; i++) {
-      if (f.path[i].startsWith(srcPath)) {
-        f.path[i] = `${destPath}/${f.name}`;
-      }
+      await FileModel.create(newfileData);
     }
-    await f.save();
+    await FileModel.create({
+      createdBy: folder.createdBy,
+      name: folder.name,
+      path: newPath,
+    });
   }
 };
 
 export default {
   uploadFile,
-  copyFile,
   moveFile,
+  copyFile,
   deleteFile,
+  moveFolder,
   deleteFolder,
   copyFolder,
-  moveFolder,
+  createFolder,
+  getFiles,
+  downloadFile,
 };

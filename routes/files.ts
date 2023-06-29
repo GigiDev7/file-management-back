@@ -7,18 +7,23 @@ const router = express.Router();
 
 router.use(protectRoute);
 
-router.post("/upload", upload.single("file"), userFilesController.uploadFile);
-router.get("/download", userFilesController.downloadFile);
-router.post("/delete", userFilesController.deleteFile);
-router.post("/copy", userFilesController.copyFile);
-router.post("/move", userFilesController.moveFile);
+router
+  .route("/")
+  .get(userFilesController.getUserFiles)
+  .post(upload.single("file"), userFilesController.uploadFile);
 
 router
-  .route("/dirs")
-  .get(userFilesController.getUserDirs)
-  .post(userFilesController.createFolder);
-router.post("/dirs/remove", userFilesController.deleteFolder);
-router.post("/dirs/move", userFilesController.moveFolder);
-router.post("/dirs/copy", userFilesController.copyFolder);
+  .route("/:fileId")
+  .get(userFilesController.downloadFile)
+  .delete(userFilesController.deleteFile);
+
+router.route("/dir").post(userFilesController.createFolder);
+
+router.route("/dir/:folderId").delete(userFilesController.deleteFolder);
+
+router.post("/copy/:fileId", userFilesController.copyFile);
+router.post("/move/:fileId", userFilesController.moveFile);
+router.post("/dir/copy/:folderId", userFilesController.copyFolder);
+router.post("/dir/move/:folderId", userFilesController.moveFolder);
 
 export default router;

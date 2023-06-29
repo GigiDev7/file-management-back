@@ -20,9 +20,7 @@ const registerUser = async (userData: UserData) => {
     email: userData.email,
     password: hashedPassword,
   });
-  await fsProvider.createDirectory(
-    path.join(process.cwd(), "public", "uploads", newUser._id.toString())
-  );
+  return newUser;
 };
 
 const loginUser = async (userData: UserData) => {
